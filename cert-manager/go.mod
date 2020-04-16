@@ -6,8 +6,8 @@ require (
 	github.com/go-logr/logr v0.1.0
 	github.com/imdario/mergo v0.3.9 // indirect
 	github.com/jetstack/cert-manager v0.14.2
-	github.com/onsi/ginkgo v1.12.0
-	github.com/onsi/gomega v1.9.0
+	github.com/onsi/ginkgo v1.11.0
+	github.com/onsi/gomega v1.8.1
 	golang.org/x/sys v0.0.0-20200113162924-86b910548bc1 // indirect
 	k8s.io/apimachinery v0.18.1
 	k8s.io/client-go v0.18.1

@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 
 	"github.com/go-logr/logr"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -25,14 +26,13 @@ import (
 const yamlSeparator = "\n---"
 const separator = "---"
 
-type ApplyObject struct {
-	Raw     []byte
-	Unstruc *unstructured.Unstructured
-	Runtime runtime.Object
+type DeclarativeObject interface {
+	runtime.Object
+	metav1.Object
 }
 
 type ObjectLoader interface {
-	LoadObjects() ([]ApplyObject, error)
+	LoadObjects() ([]Object, error)
 }
 
 type objectLoader struct {
@@ -46,9 +46,9 @@ func NewObjectLoader(scheme *runtime.Scheme) ObjectLoader {
 		log:    ctrl.Log.WithName("loader"),
 	}
 }
-func (o *objectLoader) LoadObjects() ([]ApplyObject, error) {
+func (o *objectLoader) LoadObjects() ([]Object, error) {
 
-	objects := []ApplyObject{}
+	objects := []Object{}
 	manifests := Boxed.List()
 	for _, m := range manifests {
 		o.log.Info("Loading", "manifest", m)
@@ -62,23 +62,29 @@ func (o *objectLoader) LoadObjects() ([]ApplyObject, error) {
 
 		for scanner.Scan() {
 			decoder := serializer.NewCodecFactory(o.scheme, serializer.EnableStrict).UniversalDeserializer()
-			a := ApplyObject{
-				Raw: make([]byte, len(scanner.Bytes())),
-			}
-			copy(a.Raw, scanner.Bytes())
-			obj, _ /* gvk */, err := decoder.Decode(a.Raw, nil, nil)
+
+			buf := make([]byte, len(scanner.Bytes()))
+			copy(buf, scanner.Bytes())
+			obj, _ /* gvk */, err := decoder.Decode(buf, nil, nil)
 			if err != nil {
 				return nil, err
 			}
-			a.Runtime = obj
 
 			// convert the runtime.Object to unstructured.Unstructured
-			unstructuredData, err := runtime.DefaultUnstructuredConverter.ToUnstructured(a.Runtime)
+			unstructuredData, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
 			if err != nil {
 				return nil, err
 			}
-			a.Unstruc = &unstructured.Unstructured{
+			u := &unstructured.Unstructured{
 				Object: unstructuredData,
+			}
+			a := Object{
+				object:    u,
+				Name:      u.GetName(),
+				Namespace: u.GetNamespace(),
+				Group:     u.GroupVersionKind().Group,
+				Kind:      u.GroupVersionKind().Kind,
+				json:      buf,
 			}
 
 			objects = append(objects, a)

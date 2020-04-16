@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/cluster-addons/util"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/apiutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	addonsv1alpha1 "sigs.k8s.io/cluster-addons/cert-manager/api/v1alpha1"
@@ -40,7 +41,7 @@ type CertManagerReconciler struct {
 	Scheme          *runtime.Scheme
 	DiscoveryClient *discovery.DiscoveryClient
 	DynamicClient   dynamic.Interface
-	Datastore       []util.ApplyObject
+	Datastore       []util.Object
 }
 
 // +kubebuilder:rbac:groups=addons.x-force.netapp.io,resources=certmanagers,verbs=get;list;watch;create;update;patch;delete
@@ -69,41 +70,60 @@ func (r *CertManagerReconciler) reconcileExists(ctx context.Context, name types.
 	log := r.Log
 	log.WithValues("object", name.String()).Info("reconciling")
 
-	// err = r.injectOwnerRef(ctx, instance, objects)
-	// if err != nil {
-	// 	return reconcile.Result{}, err
-	// }
-	// var manifestStr string
-
-	// if err := r.kubectl.Apply(ctx, ns, manifestStr, extraArgs...); err != nil {
-	// 	log.Error(err, "applying manifest")
-	// 	return reconcile.Result{}, fmt.Errorf("error applying manifest: %v", err)
-	// }
-
 	for _, a := range r.Datastore {
-		log.Info("Applying", "object", a.Unstruc.GetName())
-		err := r.Apply(a)
+		log.Info("Applying", "object", a.Name)
+		err := r.SetOwnerRef(log, []util.DeclarativeObject{instance}, &a)
+		if err != nil {
+			return reconcile.Result{}, err
+		}
+		err = r.Apply(a)
 		if err != nil {
 			return reconcile.Result{}, err
 		}
 	}
-	// var pause = 30 * time.Second
-	// var installError error
-	// for i := 0; i < 10; i++ {
-	// 	installError = r.Apply(a)
-	// 	if installError != nil {
-	// 		log.Error(installError, "installation error", "retry after", pause)
-	// 		time.Sleep(pause)
-	// 	} else {
-	// 		break
-	// 	}
-	// }
-	// if installError != nil {
-	// 	return reconcile.Result{}, installError
-	// }
-	// }
 
 	return reconcile.Result{}, nil
+}
+
+func (r *CertManagerReconciler) SetOwnerRef(log logr.Logger, objects []util.DeclarativeObject, ao *util.Object) error {
+
+	log.Info("injecting owner references", "name", ao.Name)
+
+	for _, owner := range objects {
+		if owner.GetName() == "" {
+			log.WithValues("object", ao).Info("has no name")
+			continue
+		}
+		if string(owner.GetUID()) == "" {
+			log.WithValues("object", ao).Info("has no UID")
+			continue
+		}
+
+		gvk, err := apiutil.GVKForObject(owner, r.Scheme)
+		if err != nil {
+			log.WithValues("object", owner).WithValues("name", owner.GetName()).Error(err, "failed to get GVK")
+			continue
+		}
+		if gvk.Group == "" || gvk.Version == "" {
+			log.WithValues("object", owner).WithValues("GroupVersionKind", gvk).Info("is not valid")
+			continue
+		}
+
+		ownerRefs := []interface{}{
+			map[string]interface{}{
+				"apiVersion":         gvk.Group + "/" + gvk.Version,
+				"blockOwnerDeletion": true,
+				"controller":         true,
+				"kind":               gvk.Kind,
+				"name":               owner.GetName(),
+				"uid":                string(owner.GetUID()),
+			},
+		}
+		if err := ao.SetNestedField(ownerRefs, "metadata", "ownerReferences"); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *CertManagerReconciler) SetupWithManager(mgr ctrl.Manager) error {
