@@ -1,0 +1,20 @@
+# permissions for end users to view certmanagers.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: certmanager-viewer-role
+rules:
+- apiGroups:
+  - addons.x-force.netapp.io
+  resources:
+  - certmanagers
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - addons.x-force.netapp.io
+  resources:
+  - certmanagers/status
+  verbs:
+  - get

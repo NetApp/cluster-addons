@@ -1,0 +1,6 @@
+apiVersion: addons.x-force.netapp.io/v1alpha1
+kind: CertManager
+metadata:
+  name: certmanager
+spec:
+  version: "v0.12.0"

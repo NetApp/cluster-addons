@@ -1,0 +1,7 @@
+domain: x-force.netapp.io
+repo: sigs.k8s.io/cluster-addons/cert-manager
+resources:
+- group: addons
+  kind: CertManager
+  version: v1alpha1
+version: "2"
